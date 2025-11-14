@@ -89,7 +89,7 @@ CMD ["python", "app.py"]
 
 ## Init-firewall.sh
 
-```Ini
+```bash
 #!/bin/bash
 
 # Attendre que le conteneur soit complètement démarré
