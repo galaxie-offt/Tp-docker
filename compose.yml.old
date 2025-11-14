@@ -25,16 +25,6 @@ services:
     networks:
       - backend_net
     restart: unless-stopped
-    cap_add:
-      - NET_ADMIN
-    volumes:
-      - ./init-firewall.sh:/docker-entrypoint-initdb.d/init-firewall.sh:ro
-    command: >
-      bash -c "
-      apt-get update && apt-get install -y iptables &&
-      /docker-entrypoint-initdb.d/init-firewall.sh &
-      docker-entrypoint.sh mariadbd
-      "
 
   app:
     build: ./app
