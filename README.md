@@ -5,9 +5,9 @@ Ce projet met en place une infrastructure Docker avec trois services :
 - app : application Flask qui interroge la base
 - proxy : serveur Nginx en reverse proxy
 
-## Objectif
+## Objectif Bonus
 
-Empêcher la VM d'accéder directement au réseau Docker `backend_net` contenant la base de données, tout en permettant l'accès via le proxy Nginx.
+Empêcher la VM d'accéder à la base de donnée. 
 
 ## Configuration Docker-Compose
 
@@ -39,6 +39,16 @@ services:
     networks:
       - backend_net
     restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./init-firewall.sh:/docker-entrypoint-initdb.d/init-firewall.sh:ro
+    command: >
+      bash -c "
+      apt-get update && apt-get install -y iptables &&
+      /docker-entrypoint-initdb.d/init-firewall.sh &
+      docker-entrypoint.sh mariadbd
+      "
 
   app:
     build: ./app
@@ -80,8 +90,9 @@ CMD ["python", "app.py"]
 ## Architecture réseau
 
 - **backend_net (172.30.0.0/24)** : réseau interne pour la base de données et l'application
-  - db : 172.30.0.2 (exemple)
-  - app : 172.30.0.3 (exemple)
+  - db : 172.30.0.3 (exemple)
+  - app : 172.30.0.2 (exemple)
+  - proxy : 172.30.0.4 (exemple)
 
 - **frontend_net (172.30.1.0/24)** : réseau pour le proxy exposé à l'extérieur
   - proxy : 172.30.1.2 (exemple)
@@ -104,34 +115,19 @@ docker-compose ps
 
 Vous devez voir les trois services en état `running`.
 
-### Phase 2 : Vérification de la connectivité interne
+### Phase 2 : Accès via le proxy depuis la VM
 
-1. Testez la connexion de l'app vers la base de données :
-```bash
-docker-compose exec app curl http://localhost:5000/health
+1. Depuis votre machine, ouvrez un navigateur et allez à :
 ```
-
-Vous devez obtenir une réponse JSON avec `"status":"ok"` et `"db":"reachable"`.
-
-2. Testez la page d'accueil de l'app :
-```bash
-docker-compose exec app curl http://localhost:5000/
-```
-
-Vous devez voir la réponse "Hello from app!"
-
-### Phase 3 : Accès via le proxy depuis la VM
-
-1. Depuis la VM, ouvrez un navigateur et allez à :
-```
-http://localhost/
+http://ip_VM/
 ```
 
 Vous devez voir "Hello from app!" s'afficher.
 
 2. Testez le endpoint health :
-```bash
-curl http://localhost/health
+```
+
+http://ip_VM/health
 ```
 
 Vous devez obtenir :
@@ -139,65 +135,19 @@ Vous devez obtenir :
 {"status":"ok","db":"reachable"}
 ```
 
-### Phase 4 : Vérification de l'isolation réseau
+### Phase 3 : Vérification de l'isolation réseau
 
-1. Identifiez l'interface bridge Docker sur la VM :
-```bash
-ip a | grep 172.30.0
-```
+1. depuis la Vm essayer de se conecter à la base de donnée. Si timeout alors la protection fonctionne. 
 
-Vous verrez une interface comme `br-89f753f7bad2` avec l'IP `172.30.0.1`.
+2. En amélioration, directement depuis la bdd, accepter les requêtes uniquement du conteneur app web.
 
-2. Testez l'accès direct depuis la VM vers la base de données (avant isolation) :
-```bash
-mysql -h 172.30.0.2 -u appuser -p apppass -D appdb -e "SELECT 1"
-```
+### Phase 4 : Tests avancés
 
-Si la connexion réussit, cela signifie que la VM accède directement à backend_net.
-
-### Phase 5 : Mise en place de l'isolation (blocage firewall)
-
-1. Bloquez tout trafic sortant de la VM vers le réseau backend_net :
-```bash
-sudo iptables -A OUTPUT -d 172.30.0.0/24 -j DROP
-```
-
-2. Vérifiez que le blocage fonctionne en essayant de se connecter à la base :
-```bash
-mysql -h 172.30.0.2 -u appuser -p apppass -D appdb -e "SELECT 1"
-```
-
-Cette tentative doit échouer avec un timeout (connection refused).
-
-3. Testez que l'accès via le proxy fonctionne toujours :
-```bash
-curl http://localhost/health
-```
-
-Vous devez toujours obtenir une réponse positive car le proxy n'est pas bloqué.
-
-### Phase 6 : Tests avancés
-
-1. Vérifiez que les conteneurs peuvent toujours communiquer entre eux :
+1. Vérifiez que les conteneurs sont connecté au bon réseaux :
 ```bash
 docker network inspect tp-networks_backend_net
+docker network inspect tp-networks_frontend_net
 ```
-
-Vous devez voir les conteneurs db et app connectés à ce réseau.
-
-2. Testez la résolution DNS interne (depuis l'app) :
-```bash
-docker-compose exec app ping db
-```
-
-Le ping doit fonctionner (la base est joignable par son nom).
-
-3. Confirmez que la base n'est pas accessible directement depuis l'extérieur :
-```bash
-telnet <IP_VM> 3306
-```
-
-Cela ne doit pas fonctionner (aucun port exposé).
 
 ## Commandes utiles
 
@@ -230,12 +180,7 @@ docker network prune -f
 
 ### Vérifier les règles iptables actives
 ```bash
-sudo iptables -L -n
-```
-
-### Revenir en arrière (supprimer la règle de blocage)
-```bash
-sudo iptables -D OUTPUT -d 172.30.0.0/24 -j DROP
+sudo iptables -L -n 
 ```
 
 ## Résumé de l'isolation
@@ -255,6 +200,6 @@ L'isolation du réseau backend_net est garantie par :
 1. La création de deux réseaux Docker distincts
 2. Le proxy en tant que seul intermédiaire entre frontend et backend
 3. Aucun port exposé pour la base de données
-4. Une règle firewall bloquant la VM vers le réseau backend_net
+4. Une règle firewall côté bdd bloquant la VM
 
 Seul le proxy peut communiquer avec l'application et la base, tandis que la VM n'accède à l'application que via le proxy sur le port 80.
