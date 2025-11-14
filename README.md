@@ -1,4 +1,4 @@
-# Projet Docker : Isolation réseau backend_net
+# Projet Docker : 
 
 Ce projet met en place une infrastructure Docker avec trois services :
 - db : base de données MariaDB
