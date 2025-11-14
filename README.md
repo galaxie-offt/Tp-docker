@@ -125,7 +125,8 @@ http://ip_VM/
 ```
 Vous devez voir "Hello from app!" s'afficher.
 ![Description de l'image](./screens/3.png)
-
+```
+```
 2. Testez le endpoint health :
 ```
 http://ip_VM/health
