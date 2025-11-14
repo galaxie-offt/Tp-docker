@@ -123,7 +123,7 @@ Vous devez voir les trois services en état `up`.
 ```
 http://ip_VM/
 ```
-1. Vous devez voir "Hello from app!" s'afficher.
+1.1 Vous devez voir "Hello from app!" s'afficher.
 
 ![Description de l'image](./screens/3.png)
 
