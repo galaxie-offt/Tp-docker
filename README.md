@@ -123,8 +123,9 @@ Vous devez voir les trois services en état `up`.
 ```
 http://ip_VM/
 ```
-
 Vous devez voir "Hello from app!" s'afficher.
+![Description de l'image](./screens/3.png)
+
 
 2. Testez le endpoint health :
 ```
@@ -136,21 +137,32 @@ Vous devez obtenir :
 ```json
 {"status":"ok","db":"reachable"}
 ```
+![Description de l'image](./screens/4.png)
+
 
 ### Phase 3 : Vérification de l'isolation réseau
 
 1. depuis la Vm essayer de se conecter à la base de donnée. Si timeout alors la protection fonctionne. 
+![Description de l'image](./screens/5.png)
 
-2. En amélioration, directement depuis la bdd, accepter les requêtes uniquement du conteneur app web.
 
-### Phase 4 : Tests avancés
-
-1. Vérifiez que les conteneurs sont connecté au bon réseaux :
+2. Vérifiez que les conteneurs sont connecté au bon réseaux :
 ```bash
 docker network inspect tp-networks_backend_net
+```
+![Description de l'image](./screens/6.png)
+
+
+```bash
 docker network inspect tp-networks_frontend_net
 ```
+![Description de l'image](./screens/7.png)
 
+
+3. Vérifiez que le conteneur db est bien les restrictions :
+![Description de l'image](./screens/8.png)
+
+   
 ## Commandes utiles
 
 ### Vérifier les logs des conteneurs
