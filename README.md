@@ -123,10 +123,11 @@ Vous devez voir les trois services en état `up`.
 ```
 http://ip_VM/
 ```
-Vous devez voir "Hello from app!" s'afficher.
+1. Vous devez voir "Hello from app!" s'afficher.
+
 ![Description de l'image](./screens/3.png)
 
-  2. Testez le endpoint health :
+2. Testez le endpoint health :
 ```
 http://ip_VM/health
 ```
