@@ -113,6 +113,8 @@ docker-compose up -d
 docker-compose ps
 ```
 
+![Description de l'image](./screens/1.png)
+
 Vous devez voir les trois services en état `up`.
 
 ### Phase 2 : Accès via le proxy depuis la VM
