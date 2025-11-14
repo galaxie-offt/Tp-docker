@@ -113,7 +113,7 @@ docker-compose up -d
 docker-compose ps
 ```
 
-Vous devez voir les trois services en état `running`.
+Vous devez voir les trois services en état `up`.
 
 ### Phase 2 : Accès via le proxy depuis la VM
 
@@ -187,12 +187,11 @@ sudo iptables -L -n
 
 | Accès | Depuis | Vers | Résultat |
 | --- | --- | --- | --- |
-| VM -> backend_net | 10.5.x.x | 172.30.0.0/24 | BLOQUÉ (firewall) |
 | VM -> proxy (http) | 10.5.x.x | port 80 (proxy) | AUTORISÉ |
 | proxy -> app | frontend_net | backend_net | AUTORISÉ |
 | proxy -> db | frontend_net | backend_net | AUTORISÉ |
 | app -> db | backend_net | backend_net | AUTORISÉ |
-| VM -> db (direct) | 10.5.x.x | 3306 (db) | BLOQUÉ (pas de port exposé) |
+| VM -> db (direct) | 10.5.x.x | 172.30.0.x (db) | BLOQUÉ |
 
 ## Conclusion
 
@@ -202,4 +201,4 @@ L'isolation du réseau backend_net est garantie par :
 3. Aucun port exposé pour la base de données
 4. Une règle firewall côté bdd bloquant la VM
 
-Seul le proxy peut communiquer avec l'application et la base, tandis que la VM n'accède à l'application que via le proxy sur le port 80.
+Seul le proxy peut communiquer avec l'application et la base, tandis que la VM accède à l'application via le proxy sur le port 80.
