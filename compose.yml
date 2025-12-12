@@ -1,20 +1,52 @@
 version: '3.9'
 
 networks:
-  backend_net:
+  # On force les sous-réseaux pour que le firewall de la BDD (init-firewall.sh) accepte les connexions
+  secure_back:
     driver: bridge
     ipam:
-      driver: default
       config:
         - subnet: 172.30.0.0/24
-  frontend_net:
+  secure_front:
     driver: bridge
     ipam:
-      driver: default
       config:
         - subnet: 172.30.1.0/24
+  monitoring_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.2.0/24
 
 services:
+  traefik:
+    image: traefik:v3.1
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.filename=/dynamic.yml"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080" # Pour debug le dashboard traefik si besoin
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/traefik.yml:ro
+      - ./traefik/dynamic.yml:/dynamic.yml:ro
+      - ./traefik/certs:/certs:ro
+    networks:
+      - secure_front
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.http-catchall.rule=HostRegexp(`{host:.+}`)"
+      - "traefik.http.routers.http-catchall.entrypoints=web"
+      - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+
   db:
     image: mariadb:latest
     environment:
@@ -23,37 +55,88 @@ services:
       MYSQL_USER: appuser
       MYSQL_PASSWORD: apppass
     networks:
-      - backend_net
+      - secure_back
     restart: unless-stopped
     cap_add:
-      - NET_ADMIN
+      - NET_ADMIN # Requis pour iptables
     volumes:
       - ./init-firewall.sh:/docker-entrypoint-initdb.d/init-firewall.sh:ro
-    command: >
-      bash -c "
-      apt-get update && apt-get install -y iptables &&
-      /docker-entrypoint-initdb.d/init-firewall.sh &
-      docker-entrypoint.sh mariadbd
-      "
 
   app:
-    build: ./app
+    # Utilise l'image locale si tu as fait le push, sinon 'build: ./app' pour tester vite
+    image: localhost:5000/app:latest
     environment:
       DB_HOST: db
       DB_USER: appuser
       DB_PASS: apppass
       DB_NAME: appdb
     networks:
-      - backend_net
+      - secure_back
+      - secure_front
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN # <--- AJOUT CRITIQUE : Requis pour le script entrypoint.sh (iptables)
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`app.localhost`)"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.routers.app.tls=true"
+      - "traefik.http.services.app.loadbalancer.server.port=5000"
+      - "traefik.docker.network=secure_front"
+    depends_on:
+      - db
+
+  registry:
+    image: registry:2
+    ports:
+      - "5000:5000"
+    networks:
+      - secure_back
+    restart: unless-stopped
+    volumes:
+      - registry-data:/var/lib/registry
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    command:
+      - "--docker_only=true"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - monitoring_net
     restart: unless-stopped
 
-  proxy:
-    image: nginx:latest
+  prometheus:
+    image: prom/prometheus:latest
     volumes:
-      - ./proxy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    ports:
-      - "80:80"
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
     networks:
-      - frontend_net
-      - backend_net
+      - monitoring_net
     restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_USER: adminuser
+      GF_SECURITY_ADMIN_PASSWORD: adminpass
+    networks:
+      - monitoring_net
+      - secure_front
+    restart: unless-stopped
+    volumes:
+      - grafana-data:/var/lib/grafana
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`monitoring.localhost`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls=true"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+      - "traefik.docker.network=tp-networks_secure_front"
+volumes:
+  registry-data:
+  prometheus-data:
+  grafana-data:
