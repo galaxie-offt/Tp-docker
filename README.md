@@ -75,9 +75,9 @@ tp-networks/
 
 ### Prérequis
 
-- Docker (v20.10+)
-- Docker Compose (v2.0+)
-- Debian/Linux (testé sur Debian 10.5.0.9)
+- Docker 
+- Docker Compose 
+- Debian/Linux 
 
 ### Étape 1 : Générer les certificats TLS auto-signés
 
@@ -106,17 +106,7 @@ Vérifier que tous les services sont "Up" :
 docker compose ps
 ```
 
-### Étape 3 : Configurer l'accès depuis ta machine
-
-Sur **ta machine de test** (PC/Mac), ajoute ces entrées à `/etc/hosts` (ou `C:\Windows\System32\drivers\etc\hosts` sur Windows) :
-
-```
-10.5.0.9 app.localhost monitoring.localhost
-```
-
-Remplace `10.5.0.9` par l'IP réelle de ta VM Debian.
-
-## Accès aux Services
+## Accès aux Services depuis la machine linux
 
 | Service | URL | Login | Certificat |
 |---------|-----|-------|-----------|
@@ -326,22 +316,8 @@ Le fichier `grafana-dashboard.json` contient 4 panels :
 **Import** :
 1. Va dans Grafana → Dashboards → Import
 2. Colle le JSON ou upload `grafana-dashboard.json`
-3. Sélectionne Prometheus comme datasource
+3. Sélectionne Prometheus comme datasource : http://prometheus:9090
 4. Clique Import
-
-### Objet "lasagna"
-
-Pour le TP, l'objet `lasagna` a été ajouté au début du JSON du dashboard avec des propriétés fictives :
-
-```json
-"lasagna": {
-  "uptime_fake": "987654",
-  "description": "fake uptime data for TP requirement",
-  "unit": "seconds",
-  "random_property_1": "mozzarella",
-  "random_property_2": 42
-}
-```
 
 ## CI/CD avec Registry Privée
 
@@ -397,53 +373,6 @@ docker compose logs -f prometheus
 docker compose ps
 ```
 
-### Résoudre "Gateway Timeout"
-
-Si tu as un 504 sur `https://monitoring.localhost` :
-
-```bash
-# Vérifie que Grafana est UP
-docker compose ps grafana
-
-# Vérifie l'isolation réseau
-docker network inspect tp-networks_secure_front
-
-# Force le redémarrage de Traefik et Grafana
-docker compose stop traefik grafana
-docker compose rm -f traefik grafana
-docker compose up -d traefik grafana
-```
-
-### Test de connexion à la base de données
-
-```bash
-# Depuis le conteneur App
-docker compose exec app python -c "
-import pymysql
-conn = pymysql.connect(
-    host='db',
-    user='appuser',
-    password='apppass',
-    database='appdb'
-)
-print('✅ Connected to DB')
-conn.close()
-"
-```
-
-## Scan de Vulnérabilités
-
-Pour scanner les images avec `trivy` :
-
-```bash
-# Installer trivy (sur la VM)
-curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-
-# Scanner l'image de l'app
-trivy image localhost:5000/app:latest
-```
-
-Pour plus de détails, voir `security.md`.
 
 ## Variables d'Environnement
 
@@ -478,37 +407,7 @@ DB_NAME: appdb
 - **cicd.md** : Pipeline de build et déploiement
 - **security.md** : Analyse de sécurité et scan de vulnérabilités
 
-## Dépannage
 
-### Issue : Application Flask retourne 502 Bad Gateway
-
-**Cause** : Flask n'écoute pas sur toutes les interfaces (`0.0.0.0`)
-
-**Solution** : Vérifie que `app.py` a cette ligne :
-```python
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
-```
-
-### Issue : Grafana ne se connecte pas à Prometheus
-
-**Cause** : Datasource mal configurée ou Prometheus non accessible
-
-**Solution** :
-1. Dans Grafana, va dans Configuration → Data Sources
-2. Ajoute une nouvelle source Prometheus
-3. URL : `http://prometheus:9090`
-4. Click "Save & Test"
-
-### Issue : Images Docker ne se buildent pas
-
-**Cause** : Dockerfile incorrect ou missing dependencies
-
-**Solution** :
-```bash
-docker build --no-cache ./app
-docker logs <container_id>
-```
 
 ## Ports
 
@@ -523,56 +422,6 @@ docker logs <container_id>
 | Prometheus | 9090 | ❌ Non | `monitoring_net` uniquement |
 | Grafana | 3000 | ❌ Non | Traefik uniquement |
 
-## Volumes
-
-Les données persistes dans des **named volumes** Docker :
-
-- `registry-data` : Images stockées dans la registry
-- `prometheus-data` : Métriques Prometheus (TSDB)
-- `grafana-data` : Configuration et dashboards Grafana
-
-Pour nettoyer tous les volumes :
-```bash
-docker compose down -v
-```
-
-## Performance et Optimisation
-
-### Scrape Interval
-
-Par défaut, Prometheus scrape cAdvisor toutes les 15 secondes. Pour augmenter la fréquence :
-
-**`prometheus/prometheus.yml`** :
-```yaml
-global:
-  scrape_interval: 5s  # Augmente la résolution
-```
-
-Puis redémarrer :
-```bash
-docker compose up -d --force-recreate prometheus
-```
-
-### Rétention des Données
-
-Prometheus garde les données 15 jours par défaut. Pour augmenter :
-
-**`compose.yml`** (service prometheus) :
-```yaml
-command:
-  - "--storage.tsdb.retention.time=30d"  # Conserve 30 jours
-```
-
-## Nettoyage Complet
-
-Arrêter et supprimer tous les conteneurs et volumes :
-
-```bash
-docker compose down -v
-rm -rf traefik/certs/*
-rm -rf prometheus/data
-rm -rf grafana/data
-```
 
 ## Ressources Additionnelles
 
@@ -581,12 +430,6 @@ rm -rf grafana/data
 - [Grafana Documentation](https://grafana.com/docs/grafana/latest/)
 - [cAdvisor GitHub](https://github.com/google/cadvisor)
 - [Docker Registry Documentation](https://docs.docker.com/registry/)
-
-## Licence
-
-MIT
-
----
 
 **Dernier mise à jour** : Décembre 2025
 
